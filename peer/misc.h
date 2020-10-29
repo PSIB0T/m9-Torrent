@@ -1,10 +1,18 @@
 #include "./peer_global.h"
+#include "./fileFunc.h"
 
 #ifndef _PMISC
 #define _PMISC
 
-#define BUFFER_SIZE 2048
+struct RequestType {
+    std::string message;
+    int clientSocket;
+    int messageSize;
+    RequestType();
 
+    RequestType(std::string message, int clientSocket, int messageSize);
+
+};
 
 int connectPeer(int * clientSocket, int port);
 void createServerSocket(int * serverSocket, int port);

@@ -43,8 +43,9 @@ int main(int argc, char ** argv){
     strcpy(message, (SendPortCommand + ":").c_str());
     strcat(message, argv[2]);
 
-    send(tracker_socket, message, sizeof(message), 0);
+    send(tracker_socket, message, strlen(message), 0);
 
+    cout << "Enter an option" << endl;
     cin >> option;
     cin.ignore(numeric_limits<streamsize>::max(),'\n');
     while(option != 0){
@@ -61,45 +62,45 @@ int main(int argc, char ** argv){
                 break;
             case 2:
                 bzero(filePath, MAXFILEPATHSIZE);
-                std::cout << "Enter file path" << endl;
-                fgets(filePath, MAXFILEPATHSIZE, stdin);
+                // std::cout << "Enter file path" << endl;
+                // fgets(filePath, MAXFILEPATHSIZE, stdin);
+                strcpy(filePath, "/home/arvindo/Downloads/Lab 5-PythonBasics.pdf\n");
                 filePath[strlen(filePath) - 1] = 0;
                 baseFileName = basename(filePath);
                 strcpy(message, (UploadFileCommand + ":").c_str());
                 strcat(message, baseFileName);
-                send(tracker_socket, message, sizeof(message), 0);
+                send(tracker_socket, message, strlen(message), 0);
                 FileMap[std::string(baseFileName)] = std::string(filePath);
                 break;
             case 3:
                 bzero(filePath, MAXFILEPATHSIZE);
-                std::cout << "Enter file name" << endl;
-                fgets(filePath, MAXFILEPATHSIZE, stdin);
+                // std::cout << "Enter file name" << endl;
+                // fgets(filePath, MAXFILEPATHSIZE, stdin);
+                strcpy(filePath, "Lab 5-PythonBasics.pdf\n");
                 filePath[strlen(filePath) - 1] = 0;
                 strcpy(message, (DownloadFileCommand + ":").c_str());
                 strcat(message, filePath);
-                send(tracker_socket, message, sizeof(message), 0);
+                send(tracker_socket, message, strlen(message), 0);
                 recv(tracker_socket, &recvBuffer, sizeof(message), 0);
-                printf("%s\n", recvBuffer);
                 status = connectPeer(&tempSocket, stoi(recvBuffer));
                 if (status == -1){
                     cout << "Could not connect to peer " << recvBuffer << endl;
                     continue;
                 }
-                cout << "Connected to peer!" << endl;
                 receiveThread = (pthread_t *)malloc(sizeof(pthread_t));
                 peerSocketConnect = (int *)(malloc(sizeof(int)));
                 *peerSocketConnect = tempSocket;
                 pthread_create(receiveThread, NULL, receiveDataFunc, peerSocketConnect);
                 bzero(message, MAXMESSAGESIZE);
                 strcpy(message, (RequestFilePeer + ":" + filePath).c_str());
-                send(tempSocket, message, sizeof(message), 0);
+                send(tempSocket, message, strlen(message), 0);
                 cin.ignore(numeric_limits<streamsize>::max(),'\n');
-                // std::cout << "Enter destination path" << endl;
 
             default:
                 cout << "Invalid command" << endl;
                 break;
         }
+        cout << "Enter an option" << endl;
         cin >> option;
         cin.ignore(numeric_limits<streamsize>::max(),'\n');
     }

@@ -44,12 +44,10 @@ void createServerSocket(int * serverSocket, int port){
 void * receiveDataFunc(void * arg){
     int clientSocket = *((int *) arg);
     free(arg);
-    char server_data[256] = "";
-    char response[256] = "";
+    char server_data[BUFFER_SIZE] = "";
     int status;
     while(1){
         status = recv(clientSocket, &server_data, sizeof(server_data), 0);
-        bzero(response, 256);
         if (status <= 0){
             printf("Peer %d disconnected!\n",clientSocket);
             pthread_mutex_lock(&lock);
@@ -58,7 +56,9 @@ void * receiveDataFunc(void * arg){
             close(clientSocket);
             break;
         }
+        std::cout << "Status is " << status << std::endl;
         handleRequest(server_data, clientSocket);
+        bzero(server_data, BUFFER_SIZE);
     }
     return NULL;
 }

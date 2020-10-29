@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <string.h>
 #include <sys/types.h>
@@ -16,6 +17,10 @@
 #include <map>
 #include <vector>
 #include <string>
+
+#define BUFFER_SIZE 1024
+#define CHUNK_SIZE 972
+#define COMMAND_SIZE 100
 
 extern int tracker_socket;
 extern int peer_socket;

@@ -1,4 +1,4 @@
-PEER_FILES = misc peer peer_global
+PEER_FILES = misc peer peer_global fileFunc
 TRACKER_FILES = misc tracker tracker_global
 
 all: mainT mainP

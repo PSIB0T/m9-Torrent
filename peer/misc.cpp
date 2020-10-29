@@ -1,6 +1,14 @@
 #include "./misc.h"
 
 
+RequestType::RequestType(){}
+
+RequestType::RequestType(std::string message, int clientSocket, int messageSize){
+    this->message = message;
+    this->clientSocket = clientSocket;
+    this->messageSize = messageSize;
+}
+
 int connectPeer(int * clientSocket, int port){
     *clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in  * server_address = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
@@ -11,53 +19,39 @@ int connectPeer(int * clientSocket, int port){
     return conn_status;
 }
 
-void handleRequest(char * message, int clientSocket){
-    std::string messageString(message);
+void handleRequest(char * message, int clientSocket, int messageSize){
+    std::string messageString = convertToString(message, messageSize);
     std::string command = messageString.substr(0, messageString.find(":"));
     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
-    char buffer[BUFFER_SIZE];
     if (command == FileStreamRecv){
-        const char * fStreamRecvEnd = FileStreamRecvEnd.c_str();
         std::string fileName = data;
-        std::cout << "Downloading file " << fileName << std::endl;
-        int fp = open(fileName.c_str(), O_WRONLY | O_CREAT, 0775);
-        int fileSize, i = 0;
-        while((fileSize = recv(clientSocket, &buffer, BUFFER_SIZE, 0) )> 0 && strcmp(buffer, fStreamRecvEnd) != 0){
-            i++;
-            write(fp, &buffer, BUFFER_SIZE);
-            bzero(buffer, BUFFER_SIZE);
-        }
-        std::cout << "Called " << i << "times" << std::endl;
-        close(fp);
-        std::cout << fStreamRecvEnd << std::endl;
-        std::cout << "Successfully received file" << std::endl;
+        downloadFile(fileName, clientSocket);
     } else if (command == RequestFilePeer){
-        std::cout << "Client has requested a file" << std::endl;
         std::string fileName = data;
-        int fp = open(FileMap[fileName].c_str(), O_RDONLY);
-        if (fp == -1){
-            std::cout << "Could not find file" << std::endl;
-            return;
-        }
-        bzero(buffer, BUFFER_SIZE);
-        strcpy(buffer, (FileStreamRecv + ":" + fileName).c_str());
-        send(clientSocket, buffer, sizeof(buffer), 0);
-        bzero(buffer, BUFFER_SIZE);
-        int i = 0, size;
-        while((size = read(fp, &buffer, BUFFER_SIZE)) != 0){
-            i++;
-            send(clientSocket, buffer, sizeof(buffer), 0);
-            bzero(buffer, BUFFER_SIZE);
-        }
-        std::cout << "Called " << i << "times" << std::endl;
-        strcpy(buffer, (FileStreamRecvEnd).c_str());
-        send(clientSocket, buffer, sizeof(buffer), 0);
-        std::cout << "Successfully sent file" << std::endl;
-        close(fp);
+        uploadFile(fileName, clientSocket);
     } else {
-        std::cout << messageString << std::endl;
+        std::cout << "Data not recognized!" << std::endl;
     }
+    // fflush(stdin);
 }
+
+// void * handleRequest(void * arg){
+//     RequestType * rType = (RequestType *) arg;
+//     std::string messageString = rType->message;
+//     std::string command = messageString.substr(0, messageString.find(":"));
+//     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
+//     if (command == FileStreamRecv){
+//         std::string fileName = data;
+//         downloadFile(fileName, rType->clientSocket);
+//     } else if (command == RequestFilePeer){
+//         std::string fileName = data;
+//         uploadFile(fileName, rType->clientSocket);
+//     } else {
+//         std::cout << "Data not recognized!" << std::endl;
+//     }
+//     free(arg);
+//     return NULL;
+// }
 
 
 void createServerSocket(int * serverSocket, int port){
@@ -80,12 +74,12 @@ void * receiveDataFunc(void * arg){
     int clientSocket = *((int *) arg);
     free(arg);
     char server_data[BUFFER_SIZE] = "";
-    char response[BUFFER_SIZE] = "";
+    pthread_t * requestHandlerThread;
     int status;
-    std::cout << "Listening to connections for " << clientSocket << std::endl;
+    // std::cout << "Listening to connections for " << clientSocket << std::endl;
     while(1){
         status = recv(clientSocket, &server_data, sizeof(server_data), 0);
-        bzero(response, BUFFER_SIZE);
+        std::cout << "Status is " << status << std::endl;
         if (status <= 0){
             printf("Peer %d disconnected!\n",clientSocket);
             pthread_mutex_lock(&lock);
@@ -94,7 +88,12 @@ void * receiveDataFunc(void * arg){
             close(clientSocket);
             break;
         }
-        handleRequest(server_data, clientSocket);
+        // std::cout << server_data << std::endl;
+        // requestHandlerThread = (pthread_t *)malloc(sizeof(pthread_t));
+        // RequestType * rType = new RequestType(convertToString(server_data, status), clientSocket, status);
+        // pthread_create(requestHandlerThread, NULL, handleRequest, rType);
+        handleRequest(server_data, clientSocket, status);
+        bzero(server_data, BUFFER_SIZE);
         // strcpy(response, "Login");
         // send(clientSocket, response, sizeof(response), 0);
     }
@@ -105,9 +104,9 @@ void * receiveDataFunc(void * arg){
 void * listenFunc(void * arg){
     int * peerSocket;
     pthread_t * receiveThread;
-    std::cout << "Listening for connections" << std::endl;
+    // std::cout << "Listening for connections" << std::endl;
     while(1){
-        listen(peer_socket, 1);
+        listen(peer_socket, 100);
         int client_socket = accept(peer_socket, NULL, NULL);
         if (client_socket == -1){
             printf("Error connecting to client!\n");
@@ -118,7 +117,7 @@ void * listenFunc(void * arg){
         pthread_mutex_unlock(&lock);
 
         receiveThread = (pthread_t *)malloc(sizeof(pthread_t));
-        printf("Connected to client %d\n", client_socket);
+        // printf("Connected to client %d\n", client_socket);
 
         peerSocket = (int *)malloc(sizeof(int));
         *peerSocket = client_socket;

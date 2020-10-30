@@ -19,8 +19,8 @@ int connectPeer(int * clientSocket, int port){
     return conn_status;
 }
 
-void handleRequest(char * message, int clientSocket, int messageSize){
-    std::string messageString = convertToString(message, messageSize);
+void handleRequest(std::string messageString, int clientSocket){
+    // std::cout << messageString << std::endl;
     std::string command = messageString.substr(0, messageString.find(":"));
     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
     if (command == FileStreamRecv){
@@ -70,32 +70,78 @@ void createServerSocket(int * serverSocket, int port){
 }
 
 
+void disconnectSession(int clientSocket){
+    printf("Peer %d disconnected!\n",clientSocket);
+    pthread_mutex_lock(&lock);
+    session.erase(session.find(clientSocket));
+    pthread_mutex_unlock(&lock);
+    close(clientSocket);
+}
+
+void flushBacklog (std::string &messageBacklog, int clientSocket){
+    int sepPosition;
+    int dataLen;
+    std::string dataLenString;
+    // std::cout << "In flush backlog initial size is " <<  messageBacklog.size()<< std::endl;
+    while(messageBacklog.size() >  0 && (sepPosition = messageBacklog.find(":")) != std::string::npos){
+        sepPosition = messageBacklog.find(":");
+        dataLenString = messageBacklog.substr(0, sepPosition);
+        // std::cout << "DatalenString is " << dataLenString << std::endl;
+        // std::cout << "Interim message backlog size is " << messageBacklog.size() << std::endl;
+        // std::cout << "Subtract: " << (messageBacklog.size() - dataLen - dataLenString.size()) << std::endl;
+        dataLen = stoi(dataLenString);
+        if (((int)messageBacklog.size() - dataLen - (int)dataLenString.size()) < 0)
+            break;
+        handleRequest(messageBacklog.substr(sepPosition + 1, dataLen), clientSocket);
+        messageBacklog.erase(0, dataLenString.size() + dataLen);
+    }
+//    std::cout << "Final block size is " <<  messageBacklog.size()<< std::endl;
+}
+
 void * receiveDataFunc(void * arg){
     int clientSocket = *((int *) arg);
     free(arg);
     char server_data[BUFFER_SIZE] = "";
     pthread_t * requestHandlerThread;
-    int status;
+    int status, remainingData;
+    std::string messageBacklog = "";
+    bool isDisconnectStatus = false;
+    int sepPosition;
     // std::cout << "Listening to connections for " << clientSocket << std::endl;
     while(1){
+        if (messageBacklog.size() > 0)
+            flushBacklog(messageBacklog, clientSocket);
+        // std::cout << "Baclog block size is " <<  messageBacklog.size()<< std::endl;            
         status = recv(clientSocket, &server_data, sizeof(server_data), 0);
-        std::cout << "Status is " << status << std::endl;
+        
         if (status <= 0){
-            printf("Peer %d disconnected!\n",clientSocket);
-            pthread_mutex_lock(&lock);
-            session.erase(session.find(clientSocket));
-            pthread_mutex_unlock(&lock);
-            close(clientSocket);
+            disconnectSession(clientSocket);
             break;
         }
-        // std::cout << server_data << std::endl;
-        // requestHandlerThread = (pthread_t *)malloc(sizeof(pthread_t));
-        // RequestType * rType = new RequestType(convertToString(server_data, status), clientSocket, status);
-        // pthread_create(requestHandlerThread, NULL, handleRequest, rType);
-        handleRequest(server_data, clientSocket, status);
+        messageBacklog += convertToString(server_data, status);
+        sepPosition = messageBacklog.find(":");
+        std::string dataLen = messageBacklog.substr(0, sepPosition);
+        // std::cout << "In receive func, datalen is " << dataLen << std::endl;
+        remainingData = (int)dataLen.size() + (int)stoi(dataLen) - messageBacklog.size();
+        while (remainingData > 0){
+            // std::cout << "In while loop!" << std::endl;
+            bzero(server_data, BUFFER_SIZE);
+            status = recv(clientSocket, &server_data, remainingData, 0);
+            if (status <= 0){
+                disconnectSession(clientSocket);
+                isDisconnectStatus = true;
+                break;
+            }
+            messageBacklog += convertToString(server_data, status);
+            // std::cout << "Received remaining data " << status << std::endl;
+            remainingData -= status;
+        }
+        // std::cout << "Exited while loop!" << std::endl;
+        if (isDisconnectStatus)
+            break;
+        handleRequest(messageBacklog.substr(sepPosition + 1, stoi(dataLen)), clientSocket);
         bzero(server_data, BUFFER_SIZE);
-        // strcpy(response, "Login");
-        // send(clientSocket, response, sizeof(response), 0);
+        messageBacklog.erase(0, dataLen.size() + stoi(dataLen));
     }
     return NULL;
 }

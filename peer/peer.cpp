@@ -40,7 +40,7 @@ int main(int argc, char ** argv){
     pthread_create(&peerThread, NULL, listenFunc, NULL);
     
     // Send the port that this peer listens to
-    strcpy(message, (SendPortCommand + ":").c_str());
+    strcpy(message, (to_string(strlen(argv[2]) + SendPortCommand.size() + 2) + ":" + SendPortCommand + ":").c_str());
     strcat(message, argv[2]);
 
     send(tracker_socket, message, strlen(message), 0);
@@ -48,6 +48,9 @@ int main(int argc, char ** argv){
     cout << "Enter an option" << endl;
     cin >> option;
     cin.ignore(numeric_limits<streamsize>::max(),'\n');
+
+    // Messages are sent in the following format to tracker/other peers
+    // DataSize(including command):Command:Parameters/Data(separated by ;)
     while(option != 0){
         bzero(message, MAXMESSAGESIZE);
         bzero(recvBuffer, MAXMESSAGESIZE);
@@ -64,10 +67,10 @@ int main(int argc, char ** argv){
                 bzero(filePath, MAXFILEPATHSIZE);
                 // std::cout << "Enter file path" << endl;
                 // fgets(filePath, MAXFILEPATHSIZE, stdin);
-                strcpy(filePath, "/home/arvindo/Downloads/Lab 5-PythonBasics.pdf\n");
+                strcpy(filePath, "/home/arvindo/Downloads/InputFile.zip\n");
                 filePath[strlen(filePath) - 1] = 0;
                 baseFileName = basename(filePath);
-                strcpy(message, (UploadFileCommand + ":").c_str());
+                strcpy(message, (to_string(strlen(baseFileName) + UploadFileCommand.size() + 2) + ":" + UploadFileCommand + ":").c_str());
                 strcat(message, baseFileName);
                 send(tracker_socket, message, strlen(message), 0);
                 FileMap[std::string(baseFileName)] = std::string(filePath);
@@ -76,9 +79,9 @@ int main(int argc, char ** argv){
                 bzero(filePath, MAXFILEPATHSIZE);
                 // std::cout << "Enter file name" << endl;
                 // fgets(filePath, MAXFILEPATHSIZE, stdin);
-                strcpy(filePath, "Lab 5-PythonBasics.pdf\n");
+                strcpy(filePath, "InputFile.zip\n");
                 filePath[strlen(filePath) - 1] = 0;
-                strcpy(message, (DownloadFileCommand + ":").c_str());
+                strcpy(message, (to_string(strlen(filePath) + DownloadFileCommand.size() + 2) + ":" + DownloadFileCommand + ":").c_str());
                 strcat(message, filePath);
                 send(tracker_socket, message, strlen(message), 0);
                 recv(tracker_socket, &recvBuffer, sizeof(message), 0);
@@ -92,7 +95,7 @@ int main(int argc, char ** argv){
                 *peerSocketConnect = tempSocket;
                 pthread_create(receiveThread, NULL, receiveDataFunc, peerSocketConnect);
                 bzero(message, MAXMESSAGESIZE);
-                strcpy(message, (RequestFilePeer + ":" + filePath).c_str());
+                strcpy(message, (to_string(strlen(filePath) + RequestFilePeer.size() + 2) + ":" + RequestFilePeer + ":" + filePath).c_str());
                 send(tempSocket, message, strlen(message), 0);
                 cin.ignore(numeric_limits<streamsize>::max(),'\n');
 

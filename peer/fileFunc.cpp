@@ -41,20 +41,22 @@ void * uploadFileThreadFunc(void * arg){
     int messageLen = strlen(buffer);
     int chunkNo = 0;
     int status;
-    std::string totalData;
+    std::string totalData, chunkString, chunkNoString;
+    std::string metaData = ":" + FileStreamRecv + ":" + fileSocket->fileName + ";";
     std::cout << "In upload thread"<<std::endl;
     int flag = 1;
     setsockopt(fileSocket->clientSocket, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
     while((status=read(fp, &chunk, CHUNK_SIZE)) != 0){
         // std::cout << "Uploading chunk!" << std::endl;
-        totalData = FileStreamRecv + ":" + fileSocket->fileName + ";" + std::to_string(chunkNo) + ";" + convertToString(chunk, status);
+        chunkString = ";" + convertToString(chunk, status);
+        chunkNoString = std::to_string(chunkNo);
+        totalData = std::to_string(metaData.size() + chunkNoString.size() + chunkString.size()) + metaData + chunkNoString + chunkString;
         stringToCharArr(buffer, totalData);
         send(fileSocket->clientSocket, buffer, totalData.size(), 0);
-        // std::cout << "Status is " << status <<std::endl;
         bzero(buffer, BUFFER_SIZE);
-        // std::cout << chunkNo << " " << totalData.size()<< std::endl;
+        std::cout << chunkNo << " " << totalData.size()<< std::endl;
         chunkNo++;
-        sleep(0.5);
+        // sleep(0.5);
     }
     flag = 0;
     setsockopt(fileSocket->clientSocket, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
@@ -72,33 +74,34 @@ void uploadFile(std::string fileName, int clientSocket){
         std::cout << "Could not find file" << std::endl;
         return;
     }
-    char buffer[BUFFER_SIZE] = "";
-    bzero(buffer, BUFFER_SIZE);
-    strcpy(buffer, (FileStreamRecv + ":" + fileName).c_str());
-    send(clientSocket, buffer, sizeof(buffer), 0);
-    bzero(buffer, BUFFER_SIZE);
-    int i = 0, size;
-    while((size = read(fp, &buffer, BUFFER_SIZE)) != 0){
-        send(clientSocket, buffer, sizeof(buffer), 0);
-        bzero(buffer, BUFFER_SIZE);
-    }
-    strcpy(buffer, (FileStreamRecvEnd).c_str());
-    send(clientSocket, buffer, sizeof(buffer), 0);
-    std::cout << "Successfully sent file" << std::endl;
+    close(fp);
+    struct FileSocket * fileSocket = new FileSocket(clientSocket, fileName);
+    pthread_t * uploadThread = (pthread_t *)malloc(sizeof(pthread_t));
+    pthread_create(uploadThread, NULL, uploadFileThreadFunc, fileSocket);
 }
 
-void downloadFile(std::string fileName, int clientSocket){
+void downloadFile(std::string data, int clientSocket){
+    std::vector<std::string> tokens = tokenize(data, ";", 2);
+    std::cout << tokens[1] << " " << tokens[2].size() << std::endl;
     char buffer[BUFFER_SIZE] = "";
-    const char * fStreamRecvEnd = FileStreamRecvEnd.c_str();
-    std::cout << "Downloading file " << fileName << std::endl;
-    FILE * fp = fopen(fileName.c_str(), "w");
-    int fileSize, i = 0;
-    while((fileSize = recv(clientSocket, &buffer, BUFFER_SIZE, 0) )> 0 && strcmp(buffer, fStreamRecvEnd) != 0){
-        fwrite(buffer, 1, fileSize, fp);
-        bzero(buffer, BUFFER_SIZE);
-    }
-    std::cout << "Successfully received file" << std::endl;
+    FILE * fp = fopen(tokens[0].c_str(), "a");
+    stringToCharArr(buffer, tokens[2]);
+    if (tokens[2][tokens[2].size() - 1] == '1')
+        fwrite(buffer, tokens[2].size() - 1, 1, fp);
+    else
+        fwrite(buffer, tokens[2].size(), 1, fp);
     fclose(fp);
-    std::cout << fStreamRecvEnd << std::endl;
-    fflush(stdout);
+    // sleep(2);
+    // const char * fStreamRecvEnd = FileStreamRecvEnd.c_str();
+    // std::cout << "Downloading file " << fileName << std::endl;
+    // FILE * fp = fopen(tokens[0].c_str(), "a");
+    // int fileSize, i = 0;
+    // while((fileSize = recv(clientSocket, &buffer, BUFFER_SIZE, 0) )> 0 && strcmp(buffer, fStreamRecvEnd) != 0){
+    //     fwrite(buffer, 1, fileSize, fp);
+    //     bzero(buffer, BUFFER_SIZE);
+    // }
+    // std::cout << "Successfully received file" << std::endl;
+    // fclose(fp);
+    // std::cout << fStreamRecvEnd << std::endl;
+    // fflush(stdout);
 }

@@ -18,9 +18,10 @@
 #include <vector>
 #include <string>
 
-#define BUFFER_SIZE 1024
-#define CHUNK_SIZE 972
+#define BUFFER_SIZE 4096
+#define CHUNK_SIZE 1024
 #define COMMAND_SIZE 100
+#define MAX_BACKLOG_SIZE 20000
 
 extern int tracker_socket;
 extern int peer_socket;

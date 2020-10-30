@@ -1,8 +1,15 @@
 #include "./misc.h"
 
+std::string convertToString(char * data, int size){
+    std::string res = "";
+    for (int i = 0; i < size; i++){
+        res += data[i];
+    }
+    return res;
+}
 
-void handleRequest(char * message, int clientSocket){
-    std::string messageString(message);
+
+void handleRequest(std::string messageString, int clientSocket){
     std::string command = messageString.substr(0, messageString.find(":"));
     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
     if (command == SendPortCommand){
@@ -41,24 +48,49 @@ void createServerSocket(int * serverSocket, int port){
     }
 }
 
+void disconnectSession(int clientSocket){
+    printf("Peer %d disconnected!\n",clientSocket);
+    pthread_mutex_lock(&lock);
+    session.erase(session.find(clientSocket));
+    pthread_mutex_unlock(&lock);
+    close(clientSocket);
+}
+
 void * receiveDataFunc(void * arg){
     int clientSocket = *((int *) arg);
     free(arg);
     char server_data[BUFFER_SIZE] = "";
-    int status;
+    int status, remainingData;
+    std::string messageBacklog = "";
+    bool isDisconnectStatus = false;
+    int sepPosition;
     while(1){
         status = recv(clientSocket, &server_data, sizeof(server_data), 0);
         if (status <= 0){
-            printf("Peer %d disconnected!\n",clientSocket);
-            pthread_mutex_lock(&lock);
-            session.erase(session.find(clientSocket));
-            pthread_mutex_unlock(&lock);
-            close(clientSocket);
+            disconnectSession(clientSocket);
             break;
         }
-        std::cout << "Status is " << status << std::endl;
-        handleRequest(server_data, clientSocket);
+        messageBacklog += convertToString(server_data, status);
+        sepPosition = messageBacklog.find(":");
+        std::string dataLen = messageBacklog.substr(0, messageBacklog.find(":"));
+        remainingData = (int)dataLen.size() + (int)stoi(dataLen) - status;
+        while (remainingData > 0){
+            bzero(server_data, BUFFER_SIZE);
+            status = recv(clientSocket, &server_data, remainingData, 0);
+            if (status <= 0){
+                disconnectSession(clientSocket);
+                isDisconnectStatus = true;
+                break;
+            }
+            messageBacklog += convertToString(server_data, status);
+            remainingData -= status;
+        }
+        if (isDisconnectStatus)
+            break;
+        // std::cout << "Status is " << status << std::endl;
+        handleRequest(messageBacklog.substr(sepPosition + 1, stoi(dataLen)), clientSocket);
         bzero(server_data, BUFFER_SIZE);
+        messageBacklog.erase(0, dataLen.size() + stoi(dataLen));
     }
     return NULL;
 }

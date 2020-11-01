@@ -1,14 +1,6 @@
 #include "./misc.h"
 
 
-RequestType::RequestType(){}
-
-RequestType::RequestType(std::string message, int clientSocket, int messageSize){
-    this->message = message;
-    this->clientSocket = clientSocket;
-    this->messageSize = messageSize;
-}
-
 int connectPeer(int * clientSocket, int port){
     *clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in  * server_address = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
@@ -33,6 +25,23 @@ void handleRequest(std::string messageString, int clientSocket){
         std::cout << "Data not recognized!" << std::endl;
     }
     // fflush(stdin);
+}
+
+void * handleRequestThread(void * data){
+    RequestType * rType;
+    while(true){
+        pthread_mutex_lock(&requestLock);
+        while (requestQueue.empty()){
+            pthread_cond_wait(&requestConditionVar, &requestLock);
+        }
+        rType = requestQueue.front();
+        requestQueue.pop();
+        pthread_mutex_unlock(&requestLock);
+        handleRequest(rType->message, rType->clientSocket);
+
+        delete rType;
+    }
+    return NULL;
 }
 
 // void * handleRequest(void * arg){
@@ -82,6 +91,7 @@ void flushBacklog (std::string &messageBacklog, int clientSocket){
     int sepPosition;
     int dataLen;
     std::string dataLenString;
+    std::string finalMessage;
     // std::cout << "In flush backlog initial size is " <<  messageBacklog.size()<< std::endl;
     while(messageBacklog.size() >  0 && (sepPosition = messageBacklog.find(":")) != std::string::npos){
         sepPosition = messageBacklog.find(":");
@@ -92,7 +102,13 @@ void flushBacklog (std::string &messageBacklog, int clientSocket){
         dataLen = stoi(dataLenString);
         if (((int)messageBacklog.size() - dataLen - (int)dataLenString.size()) < 0)
             break;
-        handleRequest(messageBacklog.substr(sepPosition + 1, dataLen), clientSocket);
+
+        finalMessage = messageBacklog.substr(sepPosition + 1, dataLen);
+        pthread_mutex_lock(&requestLock);
+        requestQueue.push(new RequestType(finalMessage, clientSocket, finalMessage.size()));
+        pthread_cond_signal(&requestConditionVar);
+        pthread_mutex_unlock(&requestLock);
+
         messageBacklog.erase(0, dataLenString.size() + dataLen);
     }
 //    std::cout << "Final block size is " <<  messageBacklog.size()<< std::endl;
@@ -104,7 +120,7 @@ void * receiveDataFunc(void * arg){
     char server_data[BUFFER_SIZE] = "";
     pthread_t * requestHandlerThread;
     int status, remainingData;
-    std::string messageBacklog = "";
+    std::string messageBacklog = "", finalMessage;
     bool isDisconnectStatus = false;
     int sepPosition;
     // std::cout << "Listening to connections for " << clientSocket << std::endl;
@@ -139,7 +155,15 @@ void * receiveDataFunc(void * arg){
         // std::cout << "Exited while loop!" << std::endl;
         if (isDisconnectStatus)
             break;
-        handleRequest(messageBacklog.substr(sepPosition + 1, stoi(dataLen)), clientSocket);
+        
+        finalMessage = messageBacklog.substr(sepPosition + 1, stoi(dataLen));
+
+        pthread_mutex_lock(&requestLock);
+        requestQueue.push(new RequestType(finalMessage, clientSocket, finalMessage.size()));
+        pthread_cond_signal(&requestConditionVar);
+        pthread_mutex_unlock(&requestLock);
+
+        // handleRequest(messageBacklog.substr(sepPosition + 1, stoi(dataLen)), clientSocket);
         bzero(server_data, BUFFER_SIZE);
         messageBacklog.erase(0, dataLen.size() + stoi(dataLen));
     }

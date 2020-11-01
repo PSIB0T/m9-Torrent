@@ -12,22 +12,29 @@
 #include <string.h>
 #include <map>
 #include <vector>
+#include "./../global_commands.h"
 
 struct FileInfo {
     std::string fileName;
+    std::string fileSize;
     std::vector<int> peers;
     FileInfo();
-    FileInfo(std::string fname);
+    FileInfo(std::string fname, std::string filesize);
 };
+
+typedef struct UserInfo {
+    std::string username;
+    std::string password;
+    int currentSessionId;
+    UserInfo(std::string username, std::string password);
+
+}UserInfo;
 
 extern int server_socket;
 extern int port;
 extern char address[20];
 extern pthread_mutex_t lock;
 extern std::map <int, int> session;
-extern std::string SendPortCommand;
-extern std::string UploadFileCommand;
-extern std::string DownloadFileCommand;
 extern std::map <int, int> session;
 extern std::map <std::string, struct FileInfo> FileMap;
 

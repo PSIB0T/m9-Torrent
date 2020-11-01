@@ -8,25 +8,46 @@ std::string convertToString(char * data, int size){
     return res;
 }
 
+std::vector<std::string> tokenize(std::string input, std::string delimiter, int noOfTokens){
+    std::vector<std::string> res;
+    std::size_t tempPos;
+    while(noOfTokens && (tempPos = input.find(delimiter))!= std::string::npos){
+        res.push_back(input.substr(0, tempPos));
+        input = input.substr(tempPos + 1, input.size());
+        noOfTokens--;
+    }
+    res.push_back(input);
+    return res;
+}
+
 
 void handleRequest(std::string messageString, int clientSocket){
     std::string command = messageString.substr(0, messageString.find(":"));
     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
+    std::vector<std::string> tokens;
+    std::string fileOwner;
     if (command == SendPortCommand){
         pthread_mutex_lock(&lock);
         session[clientSocket] = stoi(data);
         pthread_mutex_unlock(&lock);
         std::cout << "Information about client " << data << " stored!" << std::endl;
     } else if (command == UploadFileCommand){
+        tokens = tokenize(data, ";", 1);
         pthread_mutex_lock(&lock);
-        if (FileMap.find(data) == FileMap.end()){
-            FileMap[data] = FileInfo(data);
-        } 
-        FileMap[data].peers.push_back(session[clientSocket]);
+        if (FileMap.find(tokens[0]) == FileMap.end()){
+            FileMap[tokens[0]] = FileInfo(tokens[0], tokens[1]);
+        }
+        FileMap[tokens[0]].peers.push_back(session[clientSocket]);
         pthread_mutex_unlock(&lock);
         std::cout << "Successfully updated file data for " << data << std::endl;
     } else if (command == DownloadFileCommand){
-        std::string fileOwner = std::to_string(FileMap[data].peers[0]);
+        pthread_mutex_lock(&lock);
+        if (FileMap.find(data) == FileMap.end()){
+            fileOwner = FileNotFoundCode + ";File not found";
+        }else {
+            fileOwner = FileMap[data].fileSize + ";" + std::to_string(FileMap[data].peers[0]);
+        }
+        pthread_mutex_unlock(&lock);
         send(clientSocket, fileOwner.c_str(), fileOwner.size(), 0);
     }else {
         std::cout << "Client data is " << messageString << std::endl;

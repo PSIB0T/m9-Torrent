@@ -19,6 +19,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <set>
 #include <queue>
 #include "./../global_commands.h"
 
@@ -44,6 +45,8 @@ extern int tracker_socket;
 extern int peer_socket;
 extern int tracker_port;
 extern int peer_port;
+extern bool isLoggedIn;
+
 extern char address[20];
 
 

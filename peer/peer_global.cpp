@@ -45,6 +45,9 @@ int peer_socket;
 int tracker_port;
 int peer_port;
 char address[20] = "0.0.0.0";
+bool isLoggedIn = false;
+
+
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t requestLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t requestConditionVar = PTHREAD_COND_INITIALIZER;

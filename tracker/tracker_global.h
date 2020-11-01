@@ -12,6 +12,7 @@
 #include <string.h>
 #include <map>
 #include <vector>
+#include <set>
 #include "./../global_commands.h"
 
 struct FileInfo {
@@ -26,16 +27,33 @@ typedef struct UserInfo {
     std::string username;
     std::string password;
     int currentSessionId;
+    int port;
     UserInfo(std::string username, std::string password);
 
 }UserInfo;
+
+typedef struct GroupInfo {
+    std::string groupName;
+    std::string groupAdmin;
+    std::set<std::string> files;
+    std::set<std::string> users;
+    std::set<std::string> pendingRequests;
+    GroupInfo(std::string groupName, std::string groupOwner);
+
+}GroupInfo;
 
 extern int server_socket;
 extern int port;
 extern char address[20];
 extern pthread_mutex_t lock;
-extern std::map <int, int> session;
-extern std::map <int, int> session;
+extern pthread_mutex_t userLock;
+extern pthread_mutex_t groupLock;
+
+
+extern std::map <int, std::string> session;
+extern std::map<std::string, UserInfo *> UserDirectory;
+extern std::map<std::string, GroupInfo *> GroupDirectory;
+
 extern std::map <std::string, struct FileInfo> FileMap;
 
 #endif

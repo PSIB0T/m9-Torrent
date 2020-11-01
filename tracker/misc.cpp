@@ -25,30 +25,116 @@ void handleRequest(std::string messageString, int clientSocket){
     std::string command = messageString.substr(0, messageString.find(":"));
     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
     std::vector<std::string> tokens;
-    std::string fileOwner;
+    std::string response;
+    int port;
+    bool status;
     if (command == SendPortCommand){
         pthread_mutex_lock(&lock);
-        session[clientSocket] = stoi(data);
+        std::string username = session[clientSocket];
         pthread_mutex_unlock(&lock);
-        std::cout << "Information about client " << data << " stored!" << std::endl;
+
+        pthread_mutex_lock(&userLock);
+        UserDirectory[username]->port = stoi(data);
+        pthread_mutex_unlock(&userLock);
+
+        std::cout << "Information about client " << username << " and port " << data << " stored!" << std::endl;
     } else if (command == UploadFileCommand){
         tokens = tokenize(data, ";", 1);
         pthread_mutex_lock(&lock);
         if (FileMap.find(tokens[0]) == FileMap.end()){
             FileMap[tokens[0]] = FileInfo(tokens[0], tokens[1]);
         }
-        FileMap[tokens[0]].peers.push_back(session[clientSocket]);
+        std::string username = session[clientSocket];
+        pthread_mutex_lock(&userLock);
+            port = UserDirectory[username]->port;
+        pthread_mutex_unlock(&userLock);
+
+        FileMap[tokens[0]].peers.push_back(port);
         pthread_mutex_unlock(&lock);
         std::cout << "Successfully updated file data for " << data << std::endl;
     } else if (command == DownloadFileCommand){
         pthread_mutex_lock(&lock);
         if (FileMap.find(data) == FileMap.end()){
-            fileOwner = FileNotFoundCode + ";File not found";
+            response = FileNotFoundCode + ";File not found";
         }else {
-            fileOwner = FileMap[data].fileSize + ";" + std::to_string(FileMap[data].peers[0]);
+            response = FileMap[data].fileSize + ";" + std::to_string(FileMap[data].peers[0]);
         }
         pthread_mutex_unlock(&lock);
-        send(clientSocket, fileOwner.c_str(), fileOwner.size(), 0);
+        send(clientSocket, response.c_str(), response.size(), 0);
+    } else if (command == CreateUserCommand) {
+        tokens = tokenize(data, ";", 1);
+        status = createUser(tokens[0], tokens[1]);
+        if (status == false){
+            response = ResourceExistsCode + ";Username already exists";
+        } else {
+            response = StatusOkCode + ";Created User successfully";
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+        
+    }else if (command == LoginCommmand){
+        tokens = tokenize(data, ";", 1);
+        status = login(tokens[0], tokens[1], clientSocket);
+        if (status == false){
+            response = InvalidAuthCode + ";Invalid username or password";
+        }else {
+            pthread_mutex_lock(&lock);
+            session[clientSocket] = tokens[0];
+            pthread_mutex_unlock(&lock);
+            response = StatusOkCode + ";Logged in successfully";
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+    }else if (command == CreateGroupCommand){
+        status = createGroup(data, clientSocket);
+        if (status == false){
+            response = ResourceExistsCode + ";Group already exists";
+        }else {
+            response = StatusOkCode + ";Created Group successfully";
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+    }else if (command == JoinGroupCommand){
+        status = checkGroupExistence(data);
+        if (status == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        }else {
+            pthread_mutex_lock(&lock);
+                std::string username = session[clientSocket];
+            pthread_mutex_unlock(&lock);
+            status = addGroupJoinRequests(data, username);
+            if (status == false)
+                response = ResourceExistsCode + ";You're aleady added to this group";
+            else
+                response = StatusOkCode + ";Successfully submitted your request";
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+    }else if (command == RespondToJoinGroupRequestCommand){
+        tokens = tokenize(data, ";", 1);
+        status = checkGroupExistence(tokens[0]);
+        if (status == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        }else {
+            status = acceptGroupJoinRequest(tokens[0], tokens[1], clientSocket);
+            if (status == false)
+                response = InvalidAuthCode + ";Could not add user to group " + tokens[0];
+            else
+                response = StatusOkCode + ";Successfuly added user " + tokens[1] + " to group " + tokens[0];
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+
+    }else if (command == ListJoinGroupRequestsCommand){
+        status = checkGroupExistence(data);
+        if (status == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        }else {
+            response = listJoinGroupRequests(data, clientSocket);
+            if (response == InvalidAuthCode)
+                response = InvalidAuthCode + ";You do not have permissions for this operation";
+            else
+                response = StatusOkCode + ";" + response;
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+    }else if (command == ListAllGroupsCommand){
+        response = StatusOkCode + ";" +listAllGroups();
+        send(clientSocket, response.c_str(), response.size(), 0);
     }else {
         std::cout << "Client data is " << messageString << std::endl;
     }
@@ -72,6 +158,7 @@ void createServerSocket(int * serverSocket, int port){
 void disconnectSession(int clientSocket){
     printf("Peer %d disconnected!\n",clientSocket);
     pthread_mutex_lock(&lock);
+    logout(session[clientSocket]);
     session.erase(session.find(clientSocket));
     pthread_mutex_unlock(&lock);
     close(clientSocket);
@@ -92,6 +179,7 @@ void * receiveDataFunc(void * arg){
             break;
         }
         messageBacklog += convertToString(server_data, status);
+
         sepPosition = messageBacklog.find(":");
         std::string dataLen = messageBacklog.substr(0, messageBacklog.find(":"));
         remainingData = (int)dataLen.size() + (int)stoi(dataLen) - status;
@@ -128,7 +216,7 @@ void * listenFunc(void * arg){
             continue;
         }
         pthread_mutex_lock(&lock);
-        session[client_socket] = 1;
+        session[client_socket] = "";
         pthread_mutex_unlock(&lock);
 
         receiveThread = (pthread_t *)malloc(sizeof(pthread_t));

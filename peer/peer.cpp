@@ -10,7 +10,7 @@ int main(int argc, char ** argv){
 
 
     pthread_t peerThread;
-    std::string username, password, baseFilenameString, totalMessage, fileSize;
+    std::string username, password, baseFilenameString, totalMessage, fileSize, groupName;
     int option, tempSocket;
     int * peerSocketConnect;
     char message[BUFFER_SIZE] = "";
@@ -48,11 +48,7 @@ int main(int argc, char ** argv){
 
     pthread_create(&peerThread, NULL, listenFunc, NULL);
     
-    // Send the port that this peer listens to
-    strcpy(message, (to_string(strlen(argv[2]) + SendPortCommand.size() + 2) + ":" + SendPortCommand + ":").c_str());
-    strcat(message, argv[2]);
 
-    send(tracker_socket, message, strlen(message), 0);
 
     cout << "Enter an option" << endl;
     cin >> option;
@@ -65,14 +61,126 @@ int main(int argc, char ** argv){
         bzero(recvBuffer, BUFFER_SIZE);
         switch(option){
             case 1:
-                strcpy(message, "Login");
+                totalMessage = ":" + CreateUserCommand + ":";
+                // strcpy(message, (CreateUserCommand + ":").c_str());
                 cout << "Enter username and password separated by space" << endl;
                 cin >> username >> password;
-                // send(tracker_socket, message, sizeof(message), 0);
-                // recv(tracker_socket, &message, sizeof(message), 0);
-                cout << username << ":" << password << endl;
+                totalMessage += username + ";" + password;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+
                 break;
+
             case 2:
+                totalMessage = ":" + LoginCommmand + ":";
+                cout << "Enter username and password separated by space" << endl;
+                cin >> username >> password;
+                totalMessage += username + ";" + password;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                if (tokens[0] == InvalidAuthCode){
+                    cout << "Invalid username or password" << endl;
+                    break;
+                } else {
+                    postLogin(argv[2], tracker_socket);
+                    pthread_mutex_lock(&lock);
+                    isLoggedIn = true;
+                    pthread_mutex_unlock(&lock);
+                }
+                break;
+            case 3:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                totalMessage = ":" + CreateGroupCommand + ":";
+                cout << "Enter group name to be created" << endl;
+                cin >> groupName;
+                totalMessage += groupName;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+                break;
+            case 4:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                totalMessage = ":" + JoinGroupCommand + ":";
+                cout << "Enter group name to join" << endl;
+                cin >> groupName;
+                totalMessage += groupName;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+                break;
+            
+            case 6:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                totalMessage = ":" +ListJoinGroupRequestsCommand + ":";
+                cout << "Enter group name to list join requests" << endl;
+                cin >> groupName;
+                totalMessage += groupName;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+                break;
+            
+            case 7:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                totalMessage = ":" +RespondToJoinGroupRequestCommand + ":";
+                cout << "Enter group name, user name whose request you want to approve" << endl;
+                cin >> groupName >> username;
+                totalMessage += groupName + ";" + username;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+                break;
+
+            case 8:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                totalMessage = ":" + ListAllGroupsCommand + ":";
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+                break;
+
+            case 10:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
                 bzero(filePath, MAXFILEPATHSIZE);
                 // std::cout << "Enter file path" << endl;
                 // fgets(filePath, MAXFILEPATHSIZE, stdin);
@@ -108,8 +216,11 @@ int main(int argc, char ** argv){
                 writerUnlock(&FileDownloadSemaphore);
 
                 break;
-            case 3:
-                cout << "In download file!" << endl;
+            case 11:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
                 bzero(filePath, MAXFILEPATHSIZE);
                 // std::cout << "Enter file name" << endl;
                 // fgets(filePath, MAXFILEPATHSIZE, stdin);
@@ -169,4 +280,21 @@ int main(int argc, char ** argv){
     close(peer_socket);
 
     return 0;
+}
+
+
+bool checkLogin(){
+    bool isLoggedInLocal;
+    pthread_mutex_lock(&lock);
+    isLoggedInLocal = isLoggedIn;
+    pthread_mutex_unlock(&lock);
+    return isLoggedInLocal;   
+}
+
+void postLogin(std::string port, int trackerSocket){
+    // Send the port that this peer listens to
+    std::string message = ":" + SendPortCommand + ":" + port;
+    message = to_string(message.size()) + message;
+
+    int status = send(trackerSocket, message.c_str(), message.size(), 0);
 }

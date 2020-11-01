@@ -1,5 +1,5 @@
 PEER_FILES = misc peer peer_global fileFunc
-TRACKER_FILES = misc tracker tracker_global
+TRACKER_FILES = misc tracker tracker_global auth group
 
 all: mainT mainP
 

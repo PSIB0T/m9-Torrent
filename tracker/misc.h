@@ -1,4 +1,6 @@
 #include "./tracker_global.h"
+#include "./auth.h"
+#include "./group.h"
 
 #ifndef _TMISC
 #define _TMISC

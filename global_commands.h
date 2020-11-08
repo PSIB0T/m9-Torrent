@@ -1,9 +1,12 @@
 #ifndef _GGLOBALS
 #define _GGLOBALS
 
+#define CHUNK_SIZE_GLOBAL 524288
+
 #include <string>
 
 extern std::string SendPortCommand;
+extern std::string SendUsernameCommand;
 extern std::string UploadFileCommand;
 extern std::string DownloadFileCommand;
 extern std::string FileNotFoundCode;
@@ -21,5 +24,8 @@ extern std::string RespondToJoinGroupRequestCommand;
 extern std::string ListJoinGroupRequestsCommand;
 extern std::string LeaveGroupCommand;
 extern std::string ListAllGroupsCommand;
+extern std::string GetBitVector;
+extern std::string SetBitVector;
+extern std::string SetIndividualBitVector;
 
 #endif

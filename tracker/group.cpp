@@ -67,6 +67,90 @@ std::string listAllGroups(){
     return response;
 }
 
+bool isAuthorized(std::string groupName, int clientSocket){
+    bool isAuthorizedBool = true;
+    std::string username;
+    pthread_mutex_lock(&lock);
+        username = session[clientSocket];
+    pthread_mutex_unlock(&lock);
+
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        if (ginfo->users.find(username)  == ginfo->users.end())
+            isAuthorizedBool = false;
+    pthread_mutex_unlock(&groupLock);
+    return isAuthorizedBool;
+}
+
+std::string fetchFileConsumers(std::string groupName, std::string fileName){
+    std::set<std::string> fileConsumers;
+    std::string response = "";
+
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        FileInfo * fInfo = ginfo->files[fileName];
+        response += fInfo->fileSize + ";";
+        fileConsumers = fInfo->consumers;
+    pthread_mutex_unlock(&groupLock);
+
+    pthread_mutex_lock(&userLock);
+    for (auto uname: fileConsumers){
+        response += (uname + "," + std::to_string(UserDirectory[uname]->port) + ";");
+    }
+    pthread_mutex_unlock(&userLock);
+
+    if (fileConsumers.size() > 0)
+        response.pop_back();
+
+    return response;
+
+}
+
+bool checkIfFileExistsInGroup(std::string groupName, std::string fileName){
+    bool isExist = true;
+
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        if (ginfo->files.find(fileName) == ginfo->files.end())
+            isExist = false;
+    pthread_mutex_unlock(&groupLock);
+
+    return isExist;
+}
+
+bool addFileToGroup(std::string groupName, std::string fileName,std::string fileSize,int clientSocket){
+    bool isAdded = true;
+    std::string username;
+
+    pthread_mutex_lock(&lock);
+        username = session[clientSocket];
+    pthread_mutex_unlock(&lock);
+
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        if (ginfo->files.find(fileName) != ginfo->files.end())
+            isAdded = false;
+        else {
+            ginfo->files[fileName] = new FileInfo(fileName, fileSize);
+            ginfo->files[fileName]->consumers.insert(username);
+        }
+    pthread_mutex_unlock(&groupLock);
+
+    return isAdded;
+}
+
+void addUserToFileGroup(std::string groupName, std::string fileName, int clientSocket){
+    std::string username;
+    pthread_mutex_lock(&lock);
+        username = session[clientSocket];
+    pthread_mutex_unlock(&lock);
+
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        ginfo->files[fileName]->consumers.insert(username);
+    pthread_mutex_unlock(&groupLock);
+}
+
 bool acceptGroupJoinRequest(std::string groupName, std::string username, int clientSocket){
     bool isAdded = true;
     std::set<std::string>::iterator position;

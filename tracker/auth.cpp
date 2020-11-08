@@ -37,6 +37,7 @@ void logout(std::string username){
     if (UserDirectory.find(username) != UserDirectory.end()){
         UserInfo * uInfo = UserDirectory[username];
         uInfo->currentSessionId = -1;
+        uInfo->port = -1;
     }
     pthread_mutex_unlock(&userLock);
 }

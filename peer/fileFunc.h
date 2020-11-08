@@ -7,12 +7,13 @@
 
 struct FileSocket {
     int clientSocket;
+    int chunkNo;
     std::string fileName;
     FileSocket();
-    FileSocket(int clientSocket, std::string fileName);
+    FileSocket(int clientSocket, std::string fileName, int chunkNo);
 };
 
-void uploadFile(std::string fileName, int clientSocket);
+void uploadFile(std::string fileName, int chunkNo,int clientSocket);
 void downloadFile(std::string fileName, int clientSocket);
 void substring(char * destination, char * source, int start, int len);
 std::string convertToString(char * data, int size);

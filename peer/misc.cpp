@@ -15,16 +15,94 @@ void handleRequest(std::string messageString, int clientSocket){
     // std::cout << messageString << std::endl;
     std::string command = messageString.substr(0, messageString.find(":"));
     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
+    std::vector<std::string> tokens;
+    std::string response;
+
     if (command == FileStreamRecv){
         std::string fileName = data;
         downloadFile(fileName, clientSocket);
     } else if (command == RequestFilePeer){
-        std::string fileName = data;
-        uploadFile(fileName, clientSocket);
+        tokens = tokenize(data, ";", 1);
+
+        //uploadFile(filename, chunkNo, clientSocket)
+        uploadFile(tokens[0], stoi(tokens[1]),clientSocket);
+    } else if (command == SendUsernameCommand){
+        pthread_mutex_lock(&lock);
+        session[clientSocket] = data;
+        pthread_mutex_unlock(&lock);
+        
+        pthread_mutex_lock(&userLock);
+
+        if (UserDirectory.find(data) == UserDirectory.end())
+            UserDirectory[data] = new UserInfo(data);
+        UserDirectory[data]->currentSessionId = clientSocket;
+
+        pthread_mutex_unlock(&userLock);
+        
+        std::cout << "Connected to user " << data << std::endl;
+    }else if (command == GetBitVector){
+        // tokens = tokenize(data, ";", 1);
+
+        readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+            response = ":" + SetBitVector + ":" + loggedInUser + ";"  + data + ";" + FileMap[data]->getStringFromBitVector(loggedInUser);
+        readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+
+        response = std::to_string(response.size()) + response;
+        send(clientSocket, response.c_str(), response.size(), 0);
+    }else if (command == SetBitVector){
+        tokens = tokenize(data, ";", 2);
+
+        readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+            FileMap[tokens[1]]->setBitvectorFromString(tokens[0], tokens[2]);
+        readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+    }else if (command == SetIndividualBitVector){
+        tokens = tokenize(data, ";", 3);        
+        readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+            FileMap[tokens[1]]->setParticularBitPosition(tokens[0], stoi(tokens[2]), stoi(tokens[3]));
+        readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
     } else {
         std::cout << "Data not recognized!" << std::endl;
     }
     // fflush(stdin);
+}
+
+void * chunkRequestThread(void * data){
+    ChunkRequestType * crType;
+    int sessionId;
+    std::string totalMessage;
+    bool isDownload = true;
+    while(true){
+        pthread_mutex_lock(&chunkRequestLock);
+        while(chunkRequestQueue.empty()){
+            pthread_cond_wait(&chunkRequestConditionVar, &chunkRequestLock);
+        }
+        crType = chunkRequestQueue.front();
+        chunkRequestQueue.pop();
+        pthread_mutex_unlock(&chunkRequestLock);
+
+
+        readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+        if (FileMap[crType->fileName]->bitVector[loggedInUser]->at(crType->chunkNo)->bit == 1){
+            isDownload = false;
+        }
+
+        readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+
+        if (!isDownload)
+            continue;
+
+
+        pthread_mutex_lock(&userLock);
+        sessionId = UserDirectory[crType->peerUsername]->currentSessionId;
+        pthread_mutex_unlock(&userLock);
+        if (sessionId == -1)
+            continue;
+        totalMessage = ":" + RequestFilePeer + ":" + crType->fileName + ";" + std::to_string(crType->chunkNo);
+        totalMessage = std::to_string(totalMessage.size()) + totalMessage;
+        send(sessionId, totalMessage.c_str(), totalMessage.size(), 0);
+
+        delete crType;
+    }
 }
 
 void * handleRequestThread(void * data){
@@ -43,24 +121,6 @@ void * handleRequestThread(void * data){
     }
     return NULL;
 }
-
-// void * handleRequest(void * arg){
-//     RequestType * rType = (RequestType *) arg;
-//     std::string messageString = rType->message;
-//     std::string command = messageString.substr(0, messageString.find(":"));
-//     std::string data = messageString.substr(messageString.find(":") + 1, messageString.size());
-//     if (command == FileStreamRecv){
-//         std::string fileName = data;
-//         downloadFile(fileName, rType->clientSocket);
-//     } else if (command == RequestFilePeer){
-//         std::string fileName = data;
-//         uploadFile(fileName, rType->clientSocket);
-//     } else {
-//         std::cout << "Data not recognized!" << std::endl;
-//     }
-//     free(arg);
-//     return NULL;
-// }
 
 
 void createServerSocket(int * serverSocket, int port){
@@ -81,9 +141,18 @@ void createServerSocket(int * serverSocket, int port){
 
 void disconnectSession(int clientSocket){
     printf("Peer %d disconnected!\n",clientSocket);
+    std::string username;
     pthread_mutex_lock(&lock);
+    username = session[clientSocket];
     session.erase(session.find(clientSocket));
     pthread_mutex_unlock(&lock);
+
+    pthread_mutex_lock(&userLock);
+    if (UserDirectory.find(username) != UserDirectory.end()){
+        UserDirectory[username]->currentSessionId = -1;
+        UserDirectory[username]->port = -1;
+    }
+    pthread_mutex_unlock(&userLock);
     close(clientSocket);
 }
 
@@ -103,7 +172,7 @@ void flushBacklog (std::string &messageBacklog, int clientSocket){
         if (((int)messageBacklog.size() - dataLen - (int)dataLenString.size()) < 0)
             break;
 
-        finalMessage = messageBacklog.substr(sepPosition + 1, dataLen);
+        finalMessage = messageBacklog.substr(sepPosition + 1, dataLen - 1);
         pthread_mutex_lock(&requestLock);
         requestQueue.push(new RequestType(finalMessage, clientSocket, finalMessage.size()));
         pthread_cond_signal(&requestConditionVar);
@@ -135,6 +204,7 @@ void * receiveDataFunc(void * arg){
             break;
         }
         messageBacklog += convertToString(server_data, status);
+
         sepPosition = messageBacklog.find(":");
         std::string dataLen = messageBacklog.substr(0, sepPosition);
         // std::cout << "In receive func, datalen is " << dataLen << std::endl;
@@ -156,7 +226,7 @@ void * receiveDataFunc(void * arg){
         if (isDisconnectStatus)
             break;
         
-        finalMessage = messageBacklog.substr(sepPosition + 1, stoi(dataLen));
+        finalMessage = messageBacklog.substr(sepPosition + 1, stoi(dataLen) - 1);
 
         pthread_mutex_lock(&requestLock);
         requestQueue.push(new RequestType(finalMessage, clientSocket, finalMessage.size()));
@@ -183,7 +253,7 @@ void * listenFunc(void * arg){
             continue;
         }
         pthread_mutex_lock(&lock);
-        session[client_socket] = 1;
+        session[client_socket] = "";
         pthread_mutex_unlock(&lock);
 
         receiveThread = (pthread_t *)malloc(sizeof(pthread_t));

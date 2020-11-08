@@ -39,27 +39,37 @@ void handleRequest(std::string messageString, int clientSocket){
 
         std::cout << "Information about client " << username << " and port " << data << " stored!" << std::endl;
     } else if (command == UploadFileCommand){
-        tokens = tokenize(data, ";", 1);
-        pthread_mutex_lock(&lock);
-        if (FileMap.find(tokens[0]) == FileMap.end()){
-            FileMap[tokens[0]] = FileInfo(tokens[0], tokens[1]);
-        }
-        std::string username = session[clientSocket];
-        pthread_mutex_lock(&userLock);
-            port = UserDirectory[username]->port;
-        pthread_mutex_unlock(&userLock);
+        // UploadFileCommand filename filesize groupname
 
-        FileMap[tokens[0]].peers.push_back(port);
-        pthread_mutex_unlock(&lock);
-        std::cout << "Successfully updated file data for " << data << std::endl;
-    } else if (command == DownloadFileCommand){
-        pthread_mutex_lock(&lock);
-        if (FileMap.find(data) == FileMap.end()){
-            response = FileNotFoundCode + ";File not found";
-        }else {
-            response = FileMap[data].fileSize + ";" + std::to_string(FileMap[data].peers[0]);
+        tokens = tokenize(data, ";", 2);
+        status = checkGroupExistence(tokens[2]);
+        if (status == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        } else if((status = isAuthorized(tokens[2], clientSocket)) == false) {
+            response = InvalidAuthCode + ";Not authorized to add files";
+        } else {
+            status = addFileToGroup(tokens[2], tokens[0], tokens[1], clientSocket);
+            if (status == false) 
+                response = ResourceExistsCode + ";File already exists. Please choose a different name";
+            else
+                response = StatusOkCode + ";Successfully uploaded file";
         }
-        pthread_mutex_unlock(&lock);
+        send(clientSocket, response.c_str(), response.size(), 0);
+    } else if (command == DownloadFileCommand){
+        // DownloadFile groupid filename
+
+        tokens = tokenize(data, ";", 1);
+        if ((status = checkGroupExistence(tokens[0])) == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        } else if ((status = isAuthorized(tokens[0], clientSocket)) == false){
+            response = InvalidAuthCode + ";Not authorized to download from this group";
+        } else if ((status = checkIfFileExistsInGroup(tokens[0], tokens[1])) == false){
+            response = FileNotFoundCode + ";File does not exist in this group";
+        } else {
+            response = StatusOkCode + ";" + fetchFileConsumers(tokens[0], tokens[1]);
+            addUserToFileGroup(tokens[0], tokens[1], clientSocket);
+        }
+
         send(clientSocket, response.c_str(), response.size(), 0);
     } else if (command == CreateUserCommand) {
         tokens = tokenize(data, ";", 1);
@@ -180,6 +190,8 @@ void * receiveDataFunc(void * arg){
         }
         messageBacklog += convertToString(server_data, status);
 
+        // std::cout << messageBacklog << std::endl;
+
         sepPosition = messageBacklog.find(":");
         std::string dataLen = messageBacklog.substr(0, messageBacklog.find(":"));
         remainingData = (int)dataLen.size() + (int)stoi(dataLen) - status;
@@ -197,7 +209,7 @@ void * receiveDataFunc(void * arg){
         if (isDisconnectStatus)
             break;
         // std::cout << "Status is " << status << std::endl;
-        handleRequest(messageBacklog.substr(sepPosition + 1, stoi(dataLen)), clientSocket);
+        handleRequest(messageBacklog.substr(sepPosition + 1, stoi(dataLen) - 1), clientSocket);
         bzero(server_data, BUFFER_SIZE);
         messageBacklog.erase(0, dataLen.size() + stoi(dataLen));
     }

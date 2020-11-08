@@ -9,20 +9,22 @@ using namespace std;
 int main(int argc, char ** argv){
 
 
-    pthread_t peerThread;
-    std::string username, password, baseFilenameString, totalMessage, fileSize, groupName;
-    int option, tempSocket;
+    pthread_t peerThread, crThread;
+    std::string username, password, baseFilenameString, totalMessage, fileSize, groupName, filePathString, tempUser;
+    int option;
     int * peerSocketConnect;
     char message[BUFFER_SIZE] = "";
     char recvBuffer[BUFFER_SIZE] = "";
     char * baseFileName;
     char filePath[MAXFILEPATHSIZE] = "";
     pthread_t * receiveThread;
-    vector<string> tokens;
+    int tempSocket;
+    vector<string> tokens, tokens2;
     FILE * fp;
     int fp_oldOpen;
 
     sem_init(&FileDownloadSemaphore, 0, 1);
+    sem_init(&FileMapSemaphore, 0, 1);
 
     if (argc < 3){
         cout << "Usage: ./main tracker_port_no peer_port_no" << endl;
@@ -48,6 +50,7 @@ int main(int argc, char ** argv){
 
     pthread_create(&peerThread, NULL, listenFunc, NULL);
     
+    pthread_create(&crThread, NULL, chunkRequestThread, NULL);
 
 
     cout << "Enter an option" << endl;
@@ -92,6 +95,7 @@ int main(int argc, char ** argv){
                     postLogin(argv[2], tracker_socket);
                     pthread_mutex_lock(&lock);
                     isLoggedIn = true;
+                    loggedInUser = username;
                     pthread_mutex_unlock(&lock);
                 }
                 break;
@@ -181,13 +185,14 @@ int main(int argc, char ** argv){
                     cout << "User not logged in!" << endl;
                     break;
                 }
-                bzero(filePath, MAXFILEPATHSIZE);
-                // std::cout << "Enter file path" << endl;
+                // std::cout << "Enter file path and groupname" << endl;
                 // fgets(filePath, MAXFILEPATHSIZE, stdin);
-                strcpy(filePath, "/home/arvindo/Downloads/Assignment_3.pdf\n");
-                filePath[strlen(filePath) - 1] = 0;
 
-                fp = fopen(filePath, "r");
+                // cin >> filePathString >> groupname; 
+                filePathString = "/home/arvindo/Downloads/Assignment_3.pdf";
+                groupName = "g1";
+
+                fp = fopen(filePathString.c_str(), "r");
                 if (fp == NULL){
                     cout << "File unavailable" << endl;
                     break;
@@ -198,21 +203,33 @@ int main(int argc, char ** argv){
                 fclose(fp);
 
 
-                baseFileName = basename(filePath);
-                baseFilenameString = std::string(baseFileName);
+                baseFilenameString = basename(filePathString.c_str());
 
-                totalMessage = baseFilenameString + ";" + fileSize;
-                strcpy(message, (to_string(totalMessage.size() + UploadFileCommand.size() + 2) + ":" + UploadFileCommand + ":").c_str());
-                strcat(message, totalMessage.c_str());
+                // Messagesize:Command:Filename;FileSize;Groupname
+
+                totalMessage = ":" + UploadFileCommand + ":" + baseFilenameString + ";" + fileSize + ";" + groupName;
+                
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+
+                strcpy(message, totalMessage.c_str());
                 send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
 
-                pthread_mutex_lock(&lock);
-                FileMap[baseFilenameString] = std::string(filePath);
-                pthread_mutex_unlock(&lock);
+                tokens = tokenize(recvBuffer, ";", 1);
+                
+                cout << tokens[1] << endl;
+                // if (tokens[0] != StatusOkCode){
+                //     break;
+                // }
+
+                writerLock(&FileMapSemaphore);
+                    FileMap[baseFilenameString] = new FileType(baseFilenameString, filePathString, stoi(fileSize));
+                    FileMap[baseFilenameString]->setAsSeeder(loggedInUser);
+                writerUnlock(&FileMapSemaphore);
 
                 writerLock(&FileDownloadSemaphore);
                 if (FileDownloadLockMap.find(baseFilenameString) == FileDownloadLockMap.end())
-                    FileDownloadLockMap[baseFilenameString] = PTHREAD_MUTEX_INITIALIZER;
+                    FileDownloadLockMap[baseFilenameString] = new FileDownloadLockType();
                 writerUnlock(&FileDownloadSemaphore);
 
                 break;
@@ -221,52 +238,104 @@ int main(int argc, char ** argv){
                     cout << "User not logged in!" << endl;
                     break;
                 }
-                bzero(filePath, MAXFILEPATHSIZE);
-                // std::cout << "Enter file name" << endl;
-                // fgets(filePath, MAXFILEPATHSIZE, stdin);
-                strcpy(filePath, "Assignment_3.pdf\n");
-                filePath[strlen(filePath) - 1] = 0;
-                strcpy(message, (to_string(strlen(filePath) + DownloadFileCommand.size() + 2) + ":" + DownloadFileCommand + ":").c_str());
-                strcat(message, filePath);
-                send(tracker_socket, message, strlen(message), 0);
-                recv(tracker_socket, &recvBuffer, sizeof(message), 0);
                 
-                tokens = tokenize(recvBuffer, ";", 1);
+                // // std::cout << "Enter filename and groupname" << endl;
+                
+                // cin >> baseFilenameString >> groupName;
 
-                if (tokens[0] == FileNotFoundCode){
-                    cout << "File not found" << endl;
+                baseFilenameString = "Assignment_3.pdf";
+                filePathString = "./Assignment_3.pdf";
+                groupName = "g1";
+
+                totalMessage = ":" + DownloadFileCommand + ":" + groupName + ";" + baseFilenameString;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+
+                tokens = tokenize(recvBuffer, ";", 2);
+
+                if (tokens[0] != StatusOkCode){
+                    cout << tokens[1] << endl;
                     break;
                 }
 
-                pthread_mutex_lock(&lock);
-                FileMap[std::string(filePath)] = std::string(filePath);
-                pthread_mutex_unlock(&lock);
+                fileSize = tokens[1];
 
+                cout << tokens[1] << endl;
+
+                writerLock(&FileMapSemaphore);
+                    if (FileMap.find(baseFilenameString) == FileMap.end()){
+                        FileMap[baseFilenameString] = new FileType(baseFilenameString, filePathString, stoi(fileSize));
+                        FileMap[baseFilenameString]->initializeBitVector(loggedInUser);
+                    }
+                writerUnlock(&FileMapSemaphore);
+
+                
                 writerLock(&FileDownloadSemaphore);
-                if (FileDownloadLockMap.find(std::string(filePath)) == FileDownloadLockMap.end()){
-                    FileDownloadLockMap[std::string(filePath)] = PTHREAD_MUTEX_INITIALIZER;
-                    pthread_mutex_lock(&FileDownloadLockMap[std::string(filePath)]);
-                    fp_oldOpen = open(filePath, O_WRONLY | O_CREAT, 0766);
-                    fallocate(fp_oldOpen, 0, 0, stoi(tokens[0]));
-                    close(fp_oldOpen);
-                    pthread_mutex_unlock(&FileDownloadLockMap[std::string(filePath)]);
-                }
+                    if (FileDownloadLockMap.find(baseFilenameString) == FileDownloadLockMap.end()){
+                        FileDownloadLockMap[baseFilenameString] = new FileDownloadLockType();
+                        writerLock(FileDownloadLockMap[baseFilenameString]);
+                            fp_oldOpen = open(filePathString.c_str(), O_WRONLY | O_CREAT, 0766);
+                            fallocate(fp_oldOpen, 0, 0, stoi(tokens[1]));
+                            close(fp_oldOpen);
+                        writerUnlock(FileDownloadLockMap[baseFilenameString]);
+                    }
+                        
                 writerUnlock(&FileDownloadSemaphore);
 
-                status = connectPeer(&tempSocket, stoi(tokens[1]));
-                if (status == -1){
-                    cout << "Could not connect to peer " << recvBuffer << endl;
-                    continue;
-                }
-                receiveThread = (pthread_t *)malloc(sizeof(pthread_t));
-                peerSocketConnect = (int *)(malloc(sizeof(int)));
-                *peerSocketConnect = tempSocket;
-                pthread_create(receiveThread, NULL, receiveDataFunc, peerSocketConnect);
-                bzero(message, BUFFER_SIZE);
-                strcpy(message, (to_string(strlen(filePath) + RequestFilePeer.size() + 2) + ":" + RequestFilePeer + ":" + filePath).c_str());
-                send(tempSocket, message, strlen(message), 0);
-                cout << "Exiting download command!" << endl;
-                cin.ignore(numeric_limits<streamsize>::max(),'\n');
+                // pthread_mutex_lock(&lock);
+                // FileMap[std::string(filePath)] = std::string(filePath);
+                // pthread_mutex_unlock(&lock);
+                tokens = tokenize(tokens[2], ";", -2);
+                pthread_mutex_lock(&userLock);
+                    for (auto token: tokens){
+                        cout << token << endl;
+                        tokens2 = tokenize(token, ",", 1);
+                        if (tokens2[0] == loggedInUser)
+                            continue;
+                        if (UserDirectory.find(tokens2[0]) == UserDirectory.end()){
+                            UserDirectory[tokens2[0]] = new UserInfo(tokens2[0]);
+                        }
+                        if (UserDirectory[tokens2[0]]->currentSessionId == -1){
+                            status = connectPeer(&tempSocket, stoi(tokens2[1]));
+                            if (status == -1)
+                                continue;
+                            UserDirectory[tokens2[0]]->currentSessionId = tempSocket;
+                            UserDirectory[tokens2[0]]->port = stoi(tokens2[1]);
+
+                            pthread_mutex_lock(&lock);
+                                session[tempSocket] = tokens2[0];
+                            pthread_mutex_unlock(&lock);
+
+                            peerSocketConnect = (int *)(malloc(sizeof(int)));
+                            *peerSocketConnect = UserDirectory[tokens2[0]]->currentSessionId;
+                            receiveThread = (pthread_t *)malloc(sizeof(pthread_t));
+                            pthread_create(receiveThread, NULL, receiveDataFunc, peerSocketConnect);
+
+                            totalMessage = ":" + SendUsernameCommand + ":" + loggedInUser;
+                            totalMessage = to_string(totalMessage.size()) + totalMessage;
+                            send(UserDirectory[tokens2[0]]->currentSessionId, totalMessage.c_str(), totalMessage.size(), 0);
+                            totalMessage = ":" + GetBitVector + ":" + baseFilenameString;
+                            totalMessage = to_string(totalMessage.size()) + totalMessage;
+                            send(UserDirectory[tokens2[0]]->currentSessionId, totalMessage.c_str(), totalMessage.size(), 0);
+
+                            tempUser = tokens2[0];
+                        }
+                    }
+                pthread_mutex_unlock(&userLock);
+
+                readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+                    FileMap[baseFilenameString]->startDownload();
+                readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+
+                // for (int i = 0; i < FileMap[baseFilenameString]->noOfChunks; i++){
+                //     totalMessage = ":" + RequestFilePeer + ":" + baseFilenameString + ";" + std::to_string(i);
+                //     totalMessage = to_string(totalMessage.size()) + totalMessage;
+                //     send(UserDirectory[tempUser]->currentSessionId, totalMessage.c_str(), totalMessage.size(), 0);
+                // }
+                break;
 
             default:
                 cout << "Invalid command" << endl;

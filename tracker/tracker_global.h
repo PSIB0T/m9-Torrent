@@ -18,7 +18,7 @@
 struct FileInfo {
     std::string fileName;
     std::string fileSize;
-    std::vector<int> peers;
+    std::set<std::string> consumers;
     FileInfo();
     FileInfo(std::string fname, std::string filesize);
 };
@@ -35,7 +35,7 @@ typedef struct UserInfo {
 typedef struct GroupInfo {
     std::string groupName;
     std::string groupAdmin;
-    std::set<std::string> files;
+    std::map<std::string, FileInfo *> files;
     std::set<std::string> users;
     std::set<std::string> pendingRequests;
     GroupInfo(std::string groupName, std::string groupOwner);

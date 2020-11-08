@@ -1,6 +1,7 @@
 #include "./global_commands.h"
 
 std::string SendPortCommand =  "PeerPort";
+std::string SendUsernameCommand = "SendUsername";
 std::string UploadFileCommand = "UploadFile";
 std::string DownloadFileCommand = "DownloadFile";
 std::string FileNotFoundCode = "E404";
@@ -18,3 +19,6 @@ std::string LeaveGroupCommand = "LeaveGroup";
 std::string RespondToJoinGroupRequestCommand = "RespondToJoinGroupRequest";
 std::string ListJoinGroupRequestsCommand = "ListJoinGroupRequestsCommand";
 std::string ListAllGroupsCommand = "ListAllGroupsCommand";
+std::string GetBitVector = "GetBitVector";
+std::string SetBitVector = "SetBitVector";
+std::string SetIndividualBitVector = "SetIndividualBitVector";

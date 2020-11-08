@@ -13,6 +13,7 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <fstream>
 #include "./../global_commands.h"
 
 struct FileInfo {

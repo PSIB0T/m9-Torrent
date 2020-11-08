@@ -24,9 +24,10 @@ void showMenu(){
 
 int main(int argc, char ** argv){
 
-
+    ifstream in;
+    
     pthread_t peerThread, crThread;
-    std::string username, password, baseFilenameString, totalMessage, fileSize, groupName, filePathString, tempUser;
+    std::string ipString, portString,username, password, baseFilenameString, totalMessage, fileSize, groupName, filePathString, tempUser;
     int option;
     int * peerSocketConnect;
     char message[BUFFER_SIZE] = "";
@@ -43,11 +44,21 @@ int main(int argc, char ** argv){
     sem_init(&FileMapSemaphore, 0, 1);
 
     if (argc < 3){
-        cout << "Usage: ./main tracker_port_no peer_port_no" << endl;
+        cout << "Usage: ./main peer_port_no tracker_info_file" << endl;
         exit(1);
     }
-    tracker_port = atoi(argv[1]);
-    peer_port = atoi(argv[2]);
+
+    in.open(argv[2]);
+    if (in.fail()){
+        cout << "Could not locate tracker file" << endl;
+        exit(1);
+    }
+    
+    in >> ipString >> portString;
+
+    in.close();
+    tracker_port = stoi(portString);
+    peer_port = atoi(argv[1]);
 
 
     // Initialize thread pool
@@ -108,7 +119,7 @@ int main(int argc, char ** argv){
                     cout << "Invalid username or password" << endl;
                     break;
                 } else {
-                    postLogin(argv[2], tracker_socket);
+                    postLogin(argv[1], tracker_socket);
                     pthread_mutex_lock(&lock);
                     isLoggedIn = true;
                     loggedInUser = username;

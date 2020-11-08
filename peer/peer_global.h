@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <fstream>
 #include <unistd.h>
 #include <sys/types.h>
 #include <netinet/in.h>

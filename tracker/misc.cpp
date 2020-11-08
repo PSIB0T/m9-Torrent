@@ -145,7 +145,26 @@ void handleRequest(std::string messageString, int clientSocket){
     }else if (command == ListAllGroupsCommand){
         response = StatusOkCode + ";" +listAllGroups();
         send(clientSocket, response.c_str(), response.size(), 0);
-    }else {
+    }else if (command == ListAllFiles){
+        status = checkGroupExistence(data);
+        if (status == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        } else {
+            response = StatusOkCode + ";" + listFilesInGroup(data);
+        }
+
+        send(clientSocket, response.c_str(), response.size(), 0);
+    }else if (command == LeaveGroupCommand){
+        if ((status = checkGroupExistence(data)) == false){
+            response = FileNotFoundCode + ";Group does not exist";
+        } else if ((status = isAuthorized(data, clientSocket)) == false){
+            response = InvalidAuthCode + ";Not authorized";
+        } else {
+            removeUserFromGroup(data, clientSocket);
+            response = StatusOkCode + ";";
+        }
+        send(clientSocket, response.c_str(), response.size(), 0);
+    } else {
         std::cout << "Client data is " << messageString << std::endl;
     }
 }

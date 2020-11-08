@@ -18,7 +18,13 @@ int main(int argc, char ** argv){
 
     pthread_create(&serverThread, NULL, listenFunc, NULL);
 
-    pthread_join(serverThread, NULL);
+    std::string command;
+
+    while(command != "quit"){
+        cin >> command;
+    }
+
+    // pthread_join(serverThread, NULL);
 
 
     return 0;

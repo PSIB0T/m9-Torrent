@@ -6,6 +6,22 @@
 #define MAXFILEPATHSIZE 1024
 
 using namespace std;
+
+void showMenu(){
+    cout << "1: Create user" << endl;
+    cout << "2: Login user" << endl;
+    cout << "3: Create group" << endl;
+    cout << "4: Join group" << endl;
+    cout << "65 Leave group" << endl;
+    cout << "6: List pending join requests" << endl;
+    cout << "7: Accept group request" << endl;
+    cout << "8: List all groups" << endl;
+    cout << "9: List all files in group" << endl;
+    cout << "10: Upload file" << endl;
+    cout << "11: Download file" << endl;
+    cout << "12: Logout" << endl;
+}
+
 int main(int argc, char ** argv){
 
 
@@ -52,14 +68,14 @@ int main(int argc, char ** argv){
     
     pthread_create(&crThread, NULL, chunkRequestThread, NULL);
 
-
+    showMenu();
     cout << "Enter an option" << endl;
     cin >> option;
     cin.ignore(numeric_limits<streamsize>::max(),'\n');
 
     // Messages are sent in the following format to tracker/other peers
     // DataSize(including command):Command:Parameters/Data(separated by ;)
-    while(option != 0){
+    while(option != 12){
         bzero(message, BUFFER_SIZE);
         bzero(recvBuffer, BUFFER_SIZE);
         switch(option){
@@ -131,6 +147,23 @@ int main(int argc, char ** argv){
                 tokens = tokenize(recvBuffer, ";", 1);
                 cout << tokens[1] << endl;
                 break;
+
+            case 5:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                totalMessage = ":" + LeaveGroupCommand + ":";
+                cout << "Enter group name to leave" << endl;
+                cin >> groupName;
+                totalMessage += groupName;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;
+                break;
             
             case 6:
                 if (!checkLogin()){
@@ -180,17 +213,32 @@ int main(int argc, char ** argv){
                 cout << tokens[1] << endl;
                 break;
 
+            case 9:
+                if (!checkLogin()){
+                    cout << "User not logged in!" << endl;
+                    break;
+                }
+                cout << "Enter groupname" << endl;
+                cin >> groupName;
+                totalMessage = ":" + ListAllFiles + ":" + groupName;
+                totalMessage = to_string(totalMessage.size()) + totalMessage;
+                strcpy(message, totalMessage.c_str());
+                send(tracker_socket, message, strlen(message), 0);
+                recv(tracker_socket, &recvBuffer, sizeof(recvBuffer), 0);
+                tokens = tokenize(recvBuffer, ";", 1);
+                cout << tokens[1] << endl;    
+
             case 10:
                 if (!checkLogin()){
                     cout << "User not logged in!" << endl;
                     break;
                 }
-                // std::cout << "Enter file path and groupname" << endl;
+                std::cout << "Enter file path and groupname" << endl;
                 // fgets(filePath, MAXFILEPATHSIZE, stdin);
 
-                // cin >> filePathString >> groupname; 
-                filePathString = "/home/arvindo/Downloads/Assignment_3.pdf";
-                groupName = "g1";
+                cin >> filePathString >> groupName; 
+                // filePathString = "/home/arvindo/Downloads/sample-2mb-text-file.txt";
+                // groupName = "g1";
 
                 fp = fopen(filePathString.c_str(), "r");
                 if (fp == NULL){
@@ -239,13 +287,13 @@ int main(int argc, char ** argv){
                     break;
                 }
                 
-                // // std::cout << "Enter filename and groupname" << endl;
+                std::cout << "Enter filename, filepath and groupname" << endl;
                 
-                // cin >> baseFilenameString >> groupName;
+                cin >> baseFilenameString >> filePathString >> groupName;
 
-                baseFilenameString = "Assignment_3.pdf";
-                filePathString = "./Assignment_3.pdf";
-                groupName = "g1";
+                // baseFilenameString = "sample-2mb-text-file.txt";
+                filePathString = filePathString + "/" + baseFilenameString;
+                // groupName = "g1";
 
                 totalMessage = ":" + DownloadFileCommand + ":" + groupName + ";" + baseFilenameString;
                 totalMessage = to_string(totalMessage.size()) + totalMessage;
@@ -320,27 +368,17 @@ int main(int argc, char ** argv){
                             totalMessage = ":" + GetBitVector + ":" + baseFilenameString;
                             totalMessage = to_string(totalMessage.size()) + totalMessage;
                             send(UserDirectory[tokens2[0]]->currentSessionId, totalMessage.c_str(), totalMessage.size(), 0);
-
-                            tempUser = tokens2[0];
                         }
                     }
                 pthread_mutex_unlock(&userLock);
 
-                readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
-                    FileMap[baseFilenameString]->startDownload();
-                readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
-
-                // for (int i = 0; i < FileMap[baseFilenameString]->noOfChunks; i++){
-                //     totalMessage = ":" + RequestFilePeer + ":" + baseFilenameString + ";" + std::to_string(i);
-                //     totalMessage = to_string(totalMessage.size()) + totalMessage;
-                //     send(UserDirectory[tempUser]->currentSessionId, totalMessage.c_str(), totalMessage.size(), 0);
-                // }
                 break;
 
             default:
                 cout << "Invalid command" << endl;
                 break;
         }
+        showMenu();
         cout << "Enter an option" << endl;
         cin >> option;
         cin.ignore(numeric_limits<streamsize>::max(),'\n');

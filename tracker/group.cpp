@@ -139,6 +139,20 @@ bool addFileToGroup(std::string groupName, std::string fileName,std::string file
     return isAdded;
 }
 
+std::string listFilesInGroup(std::string groupName){
+    std::string res = "";
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        for (auto a: ginfo->files){
+            res += a.first + ";";
+        }
+    pthread_mutex_unlock(&groupLock);
+    if (res.size() > 0){
+        res.pop_back();
+    }
+    return res;
+}
+
 void addUserToFileGroup(std::string groupName, std::string fileName, int clientSocket){
     std::string username;
     pthread_mutex_lock(&lock);
@@ -149,6 +163,23 @@ void addUserToFileGroup(std::string groupName, std::string fileName, int clientS
         GroupInfo * ginfo = GroupDirectory[groupName];
         ginfo->files[fileName]->consumers.insert(username);
     pthread_mutex_unlock(&groupLock);
+}
+
+void removeUserFromGroup(std::string groupName, int clientSocket){
+    std::string username;
+    pthread_mutex_lock(&lock);
+        username = session[clientSocket];
+    pthread_mutex_unlock(&lock);
+
+    pthread_mutex_lock(&groupLock);
+        GroupInfo * ginfo = GroupDirectory[groupName];
+        for (auto a: ginfo->files){
+            if (a.second->consumers.find(username) != a.second->consumers.end())
+                a.second->consumers.erase(a.second->consumers.find(username));
+        }
+        ginfo->users.erase(ginfo->users.find(username));
+    pthread_mutex_unlock(&groupLock);
+
 }
 
 bool acceptGroupJoinRequest(std::string groupName, std::string username, int clientSocket){

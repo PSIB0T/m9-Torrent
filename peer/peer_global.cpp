@@ -29,10 +29,9 @@ BitVectorType::BitVectorType(int bit, int chunkSize, int bytesReceived, std::str
     this->hash = hash;
 }
 
-ChunkRequestType::ChunkRequestType(std::string fileName, int chunkNo, std::string peerUsername){
+ChunkRequestType::ChunkRequestType(std::string fileName, int chunkNo){
     this->fileName = fileName;
     this->chunkNo = chunkNo;
-    this->peerUsername = peerUsername;
 }
 
 void FileType::setAsSeeder(std::string user){
@@ -49,25 +48,26 @@ void FileType::setAsSeeder(std::string user){
 
 }
 
-void FileType::pushToChunkRequest(std::string fileName, int chunkNo, std::string peerUserName){
+void FileType::pushToChunkRequest(std::string fileName, int chunkNo){
     pthread_mutex_lock(&chunkRequestLock);
-    chunkRequestQueue.push(new ChunkRequestType(fileName, chunkNo, peerUserName));
+    chunkRequestQueue.push(new ChunkRequestType(fileName, chunkNo));
     pthread_cond_signal(&chunkRequestConditionVar);
     pthread_mutex_unlock(&chunkRequestLock);
 }
 
 void FileType::initializeBitVector(std::string user){
-    this->bitVector[user] = new std::vector<BitVectorType *>(this->noOfChunks, new BitVectorType(0, CHUNK_SIZE_GLOBAL, 0, ""));
+    this->bitVector[user] = new std::vector<BitVectorType *>();
+    for (int i = 0; i < this->noOfChunks; i++){
+        this->bitVector[user]->push_back(new BitVectorType(0, CHUNK_SIZE_GLOBAL, 0, ""));
+    }
     if (this->fileSize % CHUNK_SIZE_GLOBAL != 0)
         this->bitVector[user]->back()->chunkSize = (this->fileSize % CHUNK_SIZE_GLOBAL);
 }
 
 
 void FileType::setParticularBitPosition(std::string user, int bitVal, int chunkPos){
-    std::cout << "Inside setParticularBitPosition" << std::endl;
     if (this->bitVector[user] == NULL)
         this->initializeBitVector(user);
-    std::cout << "Initialized bit vector!" << std::endl;
     this->bitVector[user]->at(chunkPos)->bit = bitVal;
     if (bitVal == 1){
         this->bitVector[user]->at(chunkPos)->bytesReceived = this->bitVector[user]->at(chunkPos)->chunkSize;
@@ -76,6 +76,7 @@ void FileType::setParticularBitPosition(std::string user, int bitVal, int chunkP
 
 void FileType::setBitvectorFromString(std::string user, std::string bitVectorString){
     std::vector<int> bitVectorInt = splitString(bitVectorString, ',');
+    std::cout << bitVectorString << std::endl;
     this->bitVector[user] = new std::vector<BitVectorType *>();
     int fileSizeTemp;
     for (int i = 0; i < bitVectorInt.size(); i++){
@@ -83,13 +84,26 @@ void FileType::setBitvectorFromString(std::string user, std::string bitVectorStr
         if (i == this->noOfChunks - 1 && this->fileSize % CHUNK_SIZE_GLOBAL != 0){
             fileSizeTemp = this->fileSize % CHUNK_SIZE_GLOBAL;
         }
+        writerLock(&FileMapSemaphore);
         this->bitVector[user]->push_back(new BitVectorType(bitVectorInt[i], fileSizeTemp, 0, ""));
         if (bitVectorInt[i] == 1){
             this->bitVector[user]->back()->bytesReceived =  this->bitVector[user]->back()->chunkSize;
-            if (user != loggedInUser && this->bitVector[loggedInUser]->at(i)->bit == 0){
-                pushToChunkRequest(this->fileName, i, user);
-            }
+            chunkPossessionMap[i].insert(user);
         }
+        writerUnlock(&FileMapSemaphore);
+    }
+
+    std::vector<int> chunksInt(this->noOfChunks, 0);
+    for (int i = 0; i < noOfChunks; i++){
+        chunksInt[i] = i;
+    }
+
+    random_shuffle(chunksInt.begin(), chunksInt.end());
+    for (auto a: chunksInt){
+        readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
+        if (this->bitVector[user]->at(a)->bit == 1)
+            pushToChunkRequest(this->fileName, a);
+        readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
     }
 }
 
@@ -100,7 +114,7 @@ std::string FileType::getStringFromBitVector(std::string user){
     }
     std::vector<BitVectorType *> * bitvec = this->bitVector[user];
     for (auto a: *bitvec){
-        res = std::to_string(a->bit) + ",";
+        res += std::to_string(a->bit) + ",";
     }
     if (bitvec->size() > 0)
         res.pop_back();
@@ -143,18 +157,8 @@ void FileType::startDownload(){
         chunksInt[i] = i;
     }
     random_shuffle(chunksInt.begin(), chunksInt.end());
-    std::cout << "Inside startdownload function for " << this->fileName << std::endl;
     for (auto a: chunksInt){
-        if (this->bitVector[loggedInUser]->at(a)->bit == 0){
-            std::cout << "Bit " << a << " is 0" << std::endl;
-            for (auto b: this->bitVector){
-                std::cout << "Bit is " << b.second->at(0)->bit << " " << b.first << std::endl;
-                if (b.first != loggedInUser && b.second->at(a)->bit == 1){
-                    std::cout << "Just before!" << std::endl;
-                    pushToChunkRequest(this->fileName, a, b.first);
-                }
-            }
-        }
+        pushToChunkRequest(this->fileName, a);
     }
 }
 

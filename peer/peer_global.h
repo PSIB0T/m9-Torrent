@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <queue>
 #include <math.h>
+#include <openssl/sha.h>
 #include <sstream> 
 #include "./../global_commands.h"
 
@@ -50,6 +51,7 @@ typedef struct FileType {
     int fileSize;
     int noOfChunks;
     std::map<std::string, std::vector<BitVectorType *> * > bitVector;
+    std::map<int, std::set<std::string>> chunkPossessionMap;
 
     FileType(std::string fileName, std::string filePath, int fileSize);
 
@@ -61,7 +63,7 @@ typedef struct FileType {
     std::string getStringFromBitVector(std::string user);
     void initializeBitVector(std::string user);
 
-    void pushToChunkRequest(std::string fileName, int chunkNo, std::string peerUserName);
+    void pushToChunkRequest(std::string fileName, int chunkNo);
 
     void setParticularBitPosition(std::string user, int bitVal, int chunkPos);
 
@@ -102,9 +104,8 @@ typedef struct UserInfo {
 typedef struct ChunkRequestType {
     std::string fileName;
     int chunkNo;
-    std::string peerUsername;
 
-    ChunkRequestType(std::string fileName, int chunkNo, std::string peerUsername);
+    ChunkRequestType(std::string fileName, int chunkNo);
 }ChunkRequestType;
 
 

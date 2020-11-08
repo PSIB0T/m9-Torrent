@@ -4,7 +4,7 @@ TRACKER_FILES = misc tracker tracker_global auth group
 all: mainT mainP
 
 mainP: mainP.o
-	g++ global_commands.o $(foreach var,$(PEER_FILES),./peer/$(var).o) -o ./peer/main -pthread
+	g++ global_commands.o $(foreach var,$(PEER_FILES),./peer/$(var).o) -o ./peer/main -pthread -lssl -lcrypto
 
 mainT: mainT.o
 	g++ global_commands.o $(foreach var,$(TRACKER_FILES),./tracker/$(var).o) -o ./tracker/main -pthread

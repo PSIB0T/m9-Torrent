@@ -4,6 +4,37 @@ int min(int a, int b){
     return a >= b?b:a;
 }
 
+void sha256_hash_string (unsigned char hash[SHA256_DIGEST_LENGTH], char outputBuffer[65])
+{
+    int i = 0;
+
+    for(i = 0; i < SHA256_DIGEST_LENGTH; i++)
+    {
+        sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
+    }
+
+    outputBuffer[64] = 0;
+}
+
+bool hashFileChunk(char * input, unsigned long len, char * md){
+
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+
+    SHA256_CTX context;
+    if(!SHA256_Init(&context))
+        return false;
+
+    if(!SHA256_Update(&context, (unsigned char*)input, len))
+        return false;
+
+    if(!SHA256_Final(hash, &context))
+        return false;
+
+    sha256_hash_string(hash, md);
+
+    return true;
+}
+
 FileSocket::FileSocket(int clientSocket, std::string fileName, int chunkNo){
     this->clientSocket = clientSocket;
     this->fileName = fileName;
@@ -46,6 +77,8 @@ std::string convertToString(char * data, int size){
 
 void * uploadFileThreadFunc(void * arg){
     struct FileSocket * fileSocket = (struct FileSocket *) arg;
+    int status, totalFileSize;
+    std::string totalData, chunkString, noOfBytesReadString, chunkNoString;
 
     readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
     const char * filePath = FileMap[fileSocket->fileName]->filePath.c_str();
@@ -57,24 +90,34 @@ void * uploadFileThreadFunc(void * arg){
 
     int fp = open(filePath, O_RDONLY);
 
+    // char inputForSha[CHUNK_SIZE_GLOBAL], outputShaChunk[65];
+
     lseek(fp, CHUNK_SIZE_GLOBAL * fileSocket->chunkNo, SEEK_SET);
+
+    // status = read(fp, &inputForSha, CHUNK_SIZE_GLOBAL);
+    
+    // hashFileChunk(inputForSha, status, outputShaChunk);
+
+    // totalData = ":" + ChunkHashCommand + ":" + outputShaChunk;
+    // totalData = std::to_string(totalData.size()) + totalData;
+
+    // send(fileSocket->clientSocket, totalData.c_str(), totalData.size(), 0);
+
     char buffer[BUFFER_SIZE] = "";
     char chunk[CHUNK_SIZE] = "";
     // strcpy(buffer, (FileStreamRecv + ":" + fileSocket->fileName + ";").c_str());
     int messageLen = strlen(buffer);
     int chunkNo = 0;
-    int status, totalFileSize;
-    std::string totalData, chunkString, noOfBytesReadString, chunkNoString;
 
     chunkNoString = std::to_string(fileSocket->chunkNo) + ";";
 
     std::string metaData = ":" + FileStreamRecv + ":" + fileSocket->fileName + ";" + chunkNoString;
-    std::cout << "In upload thread"<<std::endl;
+    // std::cout << "In upload thread"<<std::endl;
 
     int noOfBytesRead = 0;
     int remainingBytes = CHUNK_SIZE_GLOBAL;
 
-    
+
     while(remainingBytes > 0 && (status=read(fp, &chunk, min(CHUNK_SIZE, remainingBytes))) != 0){
         // std::cout << "Uploading chunk!" << std::endl;
         chunkString = convertToString(chunk, status);
@@ -85,13 +128,13 @@ void * uploadFileThreadFunc(void * arg){
         send(fileSocket->clientSocket, buffer, totalData.size(), 0);
         bzero(buffer, BUFFER_SIZE);
         bzero(chunk, CHUNK_SIZE);
-        std::cout << chunkNo << " " << totalData.size()<< std::endl;
+        // std::cout << chunkNo << " " << totalData.size()<< std::endl;
         chunkNo++;
         noOfBytesRead += status;
         remainingBytes -= status;
         // sleep(0.5);
     }
-    std::cout << "Uploaded the file!"<<std::endl;
+    std::cout << "Uploaded Chunk!" << chunkNoString <<std::endl;
     close(fp);
 
     readerLock(&FileDownloadCount, &FileDownloadSemaphore, &FileDownloadMutex);
@@ -104,7 +147,7 @@ void * uploadFileThreadFunc(void * arg){
 
 
 void uploadFile(std::string fileName, int chunkNo,int clientSocket){
-    std::cout << "Client has requested a file " << FileMap[fileName] << std::endl;
+    std::cout << "Client has requested a file " << fileName << std::endl;
     readerLock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
     const char * filePath = FileMap[fileName]->filePath.c_str();
     readerUnlock(&FileMapCount, &FileMapSemaphore, &FileMapMutex);
@@ -122,6 +165,7 @@ void uploadFile(std::string fileName, int chunkNo,int clientSocket){
 }
 
 void downloadFile(std::string data, int clientSocket){
+    // std::cout << "In download function for " << data << std::endl;
     std::vector<std::string> tokens = tokenize(data, ";", 3);
     std::string response;
     int filePos = stoi(tokens[1]) * CHUNK_SIZE_GLOBAL + stoi(tokens[2]);
@@ -156,8 +200,12 @@ void downloadFile(std::string data, int clientSocket){
 
     writerLock(&FileMapSemaphore);
         BitVectorType * bVectorType = FileMap[tokens[0]]->bitVector[loggedInUser]->at(stoi(tokens[1]));
+        // std::cout << "File size before " << FileMap[tokens[0]]->bitVector[loggedInUser]->at(0) << std::endl;
         bVectorType->bytesReceived += sizeToWrite;
+        // std::cout << "File size after " << FileMap[tokens[0]]->bitVector[loggedInUser]->at(1) << std::endl;
+        // std::cout << bVectorType->bytesReceived << " " << tokens[1] << std::endl;
         if (bVectorType->bytesReceived >= bVectorType->chunkSize){
+            // std::cout << "Receieved chunk " << tokens[1] << " successfully" << std::endl;
             bVectorType->bit = 1;
             for (auto a: FileMap[tokens[0]]->bitVector){
                 if (a.first != loggedInUser){

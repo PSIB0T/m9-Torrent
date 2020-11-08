@@ -27,5 +27,8 @@ extern std::string ListAllGroupsCommand;
 extern std::string GetBitVector;
 extern std::string SetBitVector;
 extern std::string SetIndividualBitVector;
+extern std::string ChunkHashCommand;
+extern std::string ListAllFiles;
+extern std::string LeaveGroup;
 
 #endif

@@ -15,4 +15,6 @@ bool addFileToGroup(std::string groupName, std::string fileName,std::string file
 bool checkIfFileExistsInGroup(std::string groupName, std::string fileName);
 std::string fetchFileConsumers(std::string groupName, std::string fileName);
 void addUserToFileGroup(std::string groupName, std::string fileName, int clientSocket);
+std::string listFilesInGroup(std::string groupName);
+void removeUserFromGroup(std::string groupName, int clientSocket);
 #endif
